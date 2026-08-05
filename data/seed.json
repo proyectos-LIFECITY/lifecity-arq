@@ -1,0 +1,31 @@
+{
+  "_note": "Datos demo local-first. Espejan el esquema del BIM Hub (users/projects/memberships). En produccion esto lo sirve el Worker Cloudflare; las claves aqui son SOLO para demo local.",
+  "disciplines": [
+    { "id": "arquitectura",   "name": "Arquitectura",   "color": "#9aa7b8", "icon": "A" },
+    { "id": "estructura",     "name": "Estructura",     "color": "#c98b5b", "icon": "E" },
+    { "id": "electrico",      "name": "Eléctrico",      "color": "#f4b942", "icon": "⚡" },
+    { "id": "hidrosanitario", "name": "Hidrosanitario", "color": "#4dd0e1", "icon": "≈" },
+    { "id": "hvac",           "name": "HVAC",           "color": "#9c6bff", "icon": "❄" },
+    { "id": "gas",            "name": "Gas",            "color": "#ff7a45", "icon": "🔥" }
+  ],
+  "users": [
+    { "id": "u_admin", "name": "Admin LifeCity",   "email": "admin@lifecity.com.co", "pass": "admin",  "role": "admin" },
+    { "id": "u_ana",   "name": "Ana Rojas",        "email": "ana@lifecity.com.co",   "pass": "electrico", "role": "electrico" },
+    { "id": "u_carlos","name": "Carlos Díaz",      "email": "carlos@lifecity.com.co","pass": "hidro",  "role": "hidrosanitario" },
+    { "id": "u_maria", "name": "María Peña",       "email": "maria@lifecity.com.co", "pass": "arq",    "role": "arquitectura" },
+    { "id": "u_luis",  "name": "Luis Gómez",       "email": "luis@lifecity.com.co",  "pass": "gas",    "role": "gas" }
+  ],
+  "projects": [
+    { "slug": "torre-cali-99",  "name": "Torre Cali 99",         "city": "Cali",    "levels": ["Piso 1", "Piso 2", "Piso 3", "Piso 4"] },
+    { "slug": "edificio-valle", "name": "Edificio Valle del Lili","city": "Cali",    "levels": ["Piso 1", "Piso 2"] }
+  ],
+  "memberships": [
+    { "userId": "u_admin",  "slug": "torre-cali-99" },
+    { "userId": "u_admin",  "slug": "edificio-valle" },
+    { "userId": "u_ana",    "slug": "torre-cali-99" },
+    { "userId": "u_ana",    "slug": "edificio-valle" },
+    { "userId": "u_carlos", "slug": "torre-cali-99" },
+    { "userId": "u_maria",  "slug": "torre-cali-99" },
+    { "userId": "u_luis",   "slug": "torre-cali-99" }
+  ]
+}
