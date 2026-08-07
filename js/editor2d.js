@@ -72,6 +72,10 @@ export function mountEditor(rootEl, { slug, disc, setCrumbs }) {
   buildPalette();
   buildInspector();
   document.querySelector('.etoolbar').addEventListener('click', onToolbar);
+  if (editable) {
+    const pf = document.getElementById('plano-file');
+    if (pf) pf.addEventListener('change', onPlanoFile);
+  }
   wireCanvas();
   render();
 }
@@ -85,6 +89,7 @@ function shell(disc, editable) {
     <div class="ecanvas-wrap">
       <svg id="ecanvas" xmlns="${SVGNS}">
         <g id="layer-grid"></g>
+        <g id="layer-underlay"></g>
         <g id="layer-links"></g>
         <g id="layer-routes"></g>
         <g id="layer-circuits"></g>
@@ -98,9 +103,11 @@ function shell(disc, editable) {
         <button class="btn sm" data-act="unifilar">Unifilar</button>
         <button class="btn sm" data-act="retie">RETIE 2026</button>` : ''}
         ${cfgR ? `<button class="btn sm" data-act="routenorm">${cfgR.btn}</button>` : ''}
-        ${!editable ? '' : `<button class="btn sm primary" data-act="save">Guardar</button>`}
+        ${!editable ? '' : `<button class="btn sm" data-act="plano">🗺 Plano de fondo</button>
+        <button class="btn sm primary" data-act="save">Guardar</button>`}
       </div>
       ${!editable ? `<div class="readonly-banner">Solo lectura · no puedes editar ${st.d.name}</div>` : ''}
+      <input type="file" id="plano-file" accept="image/*" style="display:none">
       <div class="ehint" id="ehint"></div>
     </div>
     <div class="einspector" id="einspector"></div>
@@ -169,8 +176,19 @@ function buildInspector() {
       <div id="route-info" style="margin-top:12px"></div>`;
   }
 
+  let underlayUI = '';
+  const u = st.scene.underlay;
+  if (st.editable && u) {
+    underlayUI = `<h4>Plano de fondo</h4>
+      <div class="f"><label>Ancho real (cm)</label><input type="number" id="ul-w" value="${u.w}"></div>
+      <div class="f"><label>Opacidad</label><input type="range" id="ul-op" min="0.1" max="1" step="0.05" value="${u.opacity}"></div>
+      <div class="linkrow" style="justify-content:space-between">
+        <span style="font-size:11px;color:var(--text-dim)">Escala el plano y traza encima.</span>
+        <button class="btn sm ghost" id="ul-del">Quitar</button></div>`;
+  }
+
   box.innerHTML = `<h4>Selección</h4><div id="insp-sel"><div style="font-size:11px;color:var(--text-dim)">Nada seleccionado.</div></div>
-    ${elecUI}${routeUI}
+    ${elecUI}${routeUI}${underlayUI}
     <h4>Vínculos (otras disciplinas)</h4>
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Insértalos como fondo de referencia.</div>
     ${linkRows}`;
@@ -188,6 +206,15 @@ function buildInspector() {
     document.getElementById('route-clear').addEventListener('click', () => { st.scene.routes = []; persist(); render(); renderRouteInfo(); });
     renderRouteInfo();
   }
+  if (st.editable && st.scene.underlay) {
+    const ul = st.scene.underlay;
+    document.getElementById('ul-w').addEventListener('change', (ev) => {
+      const w = Math.max(50, +ev.target.value || ul.w);
+      ul.h = Math.round(ul.h * (w / ul.w)); ul.w = w; persist(); render();
+    });
+    document.getElementById('ul-op').addEventListener('input', (ev) => { ul.opacity = +ev.target.value; persist(); render(); });
+    document.getElementById('ul-del').addEventListener('click', () => { st.scene.underlay = null; persist(); render(); buildInspector(); });
+  }
 }
 
 function onToolbar(e) {
@@ -200,6 +227,36 @@ function onToolbar(e) {
   if (act === 'unifilar') openUnifilar(st.scene, st.proj);
   if (act === 'retie') showRetie();
   if (act === 'routenorm') showRouteNorm();
+  if (act === 'plano') { const pf = document.getElementById('plano-file'); if (pf) pf.click(); }
+}
+
+/* ------ plano de fondo (underlay) ------ */
+function onPlanoFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const w = 800; // ancho por defecto 8 m; se calibra en el inspector
+      const h = Math.round(w * img.naturalHeight / img.naturalWidth);
+      st.scene.underlay = { href: rd.result, x: 0, y: 0, w, h, opacity: 0.55 };
+      persist(); render(); buildInspector(); fitView();
+      toast('Plano cargado. Ajusta ancho/opacidad en el panel derecho.');
+    };
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function renderUnderlay() {
+  const g = document.getElementById('layer-underlay');
+  if (!g) return;
+  const u = st.scene.underlay;
+  g.innerHTML = u
+    ? `<image href="${u.href}" x="${u.x}" y="${u.y}" width="${u.w}" height="${u.h}" opacity="${u.opacity}" preserveAspectRatio="none" pointer-events="none"/>`
+    : '';
 }
 
 /* ---------------- render ---------------- */
@@ -208,6 +265,7 @@ function render() {
   const v = st.view;
   svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
   renderGrid();
+  renderUnderlay();
   renderLinks();
   renderRoutes();
   renderCircuits();
@@ -561,9 +619,11 @@ function fitView() {
   const els = st.scene.elements;
   const svg = document.getElementById('ecanvas');
   const aspect = svg.clientWidth / Math.max(1, svg.clientHeight);
-  if (!els.length) { st.view = { x: -200, y: -200, w: 1400, h: 1400 / aspect }; render(); return; }
+  const u = st.scene.underlay;
+  if (!els.length && !u) { st.view = { x: -200, y: -200, w: 1400, h: 1400 / aspect }; render(); return; }
   let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
   for (const e of els) { minx = Math.min(minx, e.x); miny = Math.min(miny, e.y); maxx = Math.max(maxx, e.x); maxy = Math.max(maxy, e.y); }
+  if (u) { minx = Math.min(minx, u.x); miny = Math.min(miny, u.y); maxx = Math.max(maxx, u.x + u.w); maxy = Math.max(maxy, u.y + u.h); }
   const pad = 150;
   let w = (maxx - minx) + pad * 2, h = (maxy - miny) + pad * 2;
   if (w / h < aspect) w = h * aspect; else h = w / aspect;

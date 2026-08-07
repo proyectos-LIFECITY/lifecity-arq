@@ -73,7 +73,7 @@ const Store = (() => {
   }
 
   // ---- escenas (modelo 2D por proyecto+disciplina) ----
-  function emptyScene() { return { elements: [], circuits: [], routes: [], links: [], seq: 0, circuitSeq: {} }; }
+  function emptyScene() { return { elements: [], circuits: [], routes: [], links: [], underlay: null, seq: 0, circuitSeq: {} }; }
   function getScene(slug, disc) {
     try {
       const s = JSON.parse(localStorage.getItem(LS_SCENE(slug, disc)) || 'null');
