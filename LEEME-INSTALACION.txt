@@ -1,0 +1,48 @@
+LifeCity ARQ - Plataforma de Diseno MEP 2D
+==========================================
+
+INSTALACION RAPIDA (Windows)
+----------------------------
+1) Descomprime esta carpeta donde quieras.
+2) Doble clic en  INSTALAR.bat
+   - Verifica que tengas Python (si no, te lleva a descargarlo).
+   - Copia la app a tu equipo y crea un icono "LifeCity ARQ" en el Escritorio.
+3) Abre la app con el icono del Escritorio (o con "Iniciar LifeCity ARQ.bat").
+   Se abre en el navegador en  http://localhost:8130
+
+Si prefieres NO instalar: solo doble clic en
+"Iniciar LifeCity ARQ.bat" desde esta misma carpeta.
+
+REQUISITOS
+----------
+- Windows 10/11
+- Python 3 (el instalador te guia si no lo tienes)
+- Navegador moderno (Chrome, Edge, Firefox)
+
+CUENTAS DEMO
+------------
+  ana@lifecity.com.co     / electrico   (Ing. Electrica)
+  carlos@lifecity.com.co  / hidro        (Hidrosanitario)
+  luis@lifecity.com.co    / gas          (Gas)
+  admin@lifecity.com.co   / admin         (edita todo)
+
+Un disenador ve TODAS las disciplinas del proyecto,
+pero solo edita la suya.
+
+QUE PROBAR
+----------
+- Electrico:  coloca tablero + tomas + luminarias, crea circuitos
+              (linea punteada), y abre "Cuadro de cargas", "Unifilar"
+              y "RETIE 2026".
+- Hidrosanitario / Gas:  coloca aparatos + bajante/medidor y pulsa
+              "Trazar mejor ruta" (ruteo que evita estructura y
+              asigna diametros por norma).
+- Plano de fondo:  boton "Plano de fondo" para cargar tu plano de
+              arquitectura y trazar encima.
+
+TUS DATOS SON LOCALES
+---------------------
+Todo se guarda en tu propio equipo (en el navegador). No se sube a
+ninguna nube en esta version.
+
+Cuentanos que te parecio:  baronajuandavid@gmail.com
