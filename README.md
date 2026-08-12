@@ -1,12 +1,17 @@
 # LifeCity ARQ · Plataforma Colaborativa de Diseño MEP (2D)
 
-App de escritorio (web local) para que los diseñadores entren, vean **los proyectos en los que están inscritos** y, dentro de cada uno, accedan a las **disciplinas** con permiso por rol. Construida a partir del **Visor Cali (repo 44)** y el modelo de colaboración del **BIM Hub (repo 73 · "Revit Model Report Automation")**.
+App web para que los diseñadores entren, vean **los proyectos en los que están inscritos** y, dentro de cada uno, accedan a las **disciplinas** con permiso por rol. Construida a partir del **Visor Cali (repo 44)** y el modelo de colaboración del **BIM Hub (repo 73 · "Revit Model Report Automation")**.
 
-## Cómo ejecutar
+## 🌐 En línea (GitHub Pages)
+**https://proyectos-lifecity.github.io/lifecity-arq/** — corre en el navegador, sin instalar.
+
+> Nota: en esta versión los datos son **local-first** (se guardan en el navegador de cada usuario). Para colaboración real multi-usuario entre máquinas hay que conectar el backend (BIM Hub Cloudflare) — el `js/store.js` ya está diseñado para conmutar sin reescribir la UI.
+
+## Cómo ejecutar en local
 ```
 python serve.py
 ```
-o doble clic en **`Iniciar LifeCity ARQ.bat`** → abre `http://localhost:8130/login.html`.
+o doble clic en **`Iniciar LifeCity ARQ.bat`** → abre `http://localhost:8130/login.html`. También hay **`INSTALAR.bat`** (crea icono en el Escritorio) para uso offline.
 
 ## Cuentas demo
 | Correo | Clave | Rol | Edita |

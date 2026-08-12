@@ -30,13 +30,13 @@ Por eso quiero que pruebes **LifeCity ARQ**, una plataforma de **diseño MEP en 
 
 **Por qué te va a gustar:** te quita el trabajo repetitivo (repartir circuitos, escoger diámetros, dibujar el unifilar) y te deja decidir. El ruteo usa un modelo que elige la ruta de menor costo entre varias opciones. Y la norma va integrada, no en un PDF aparte.
 
-### Descárgalo y pruébalo (2 minutos)
-1. **Descarga:** [ENLACE_DE_DESCARGA]
-2. Descomprime y doble clic en **`INSTALAR.bat`** (te crea un icono en el Escritorio; si te falta Python, el instalador te guía).
-3. Abre **LifeCity ARQ** y entra con la cuenta demo:
-   **usuario** `ana@lifecity.com.co` · **clave** `electrico`
+### Pruébalo ya (sin instalar nada)
+1. **Ábrelo en el navegador:** https://proyectos-lifecity.github.io/lifecity-arq/
+2. Entra con la cuenta demo: **usuario** `ana@lifecity.com.co` · **clave** `electrico`
+3. Coloca elementos, crea circuitos y traza rutas.
 
-*(Requiere Windows 10/11. Cuentas demo para hidro y gas dentro del LÉEME.)*
+¿Lo quieres **offline / en tu equipo**? Descarga el instalador aquí: [ENLACE_DE_DESCARGA]
+(descomprime y doble clic en `INSTALAR.bat`; requiere Windows + Python, el instalador te guía).
 
 ### Lo más importante: dime qué te pareció 🙏
 Esto es una **beta**, y tu criterio de ingeniero es literalmente lo que va a moldear el producto. Después de trastear 15–20 minutos, respóndeme este correo con lo que sea:
