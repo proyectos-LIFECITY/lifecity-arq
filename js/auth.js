@@ -6,7 +6,8 @@ import Store from './store.js';
 
 export async function requireSession() {
   await Store.ready;
-  const u = Store.currentUser();
-  if (!u) { location.replace('login.html'); return null; }
+  // Beta: sin muro de credenciales. Si no hay sesión, entra como invitado
+  // (demo con acceso total). El login sigue en login.html para cambiar de rol.
+  const u = Store.currentUser() || Store.autoGuest();
   return u;
 }

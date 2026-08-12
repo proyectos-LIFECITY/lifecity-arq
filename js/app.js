@@ -35,8 +35,7 @@ function parse() {
 }
 
 async function route() {
-  const u = Store.currentUser();
-  if (!u) { location.replace('login.html'); return; }
+  const u = Store.currentUser() || Store.autoGuest();
   const parts = parse();
 
   // default

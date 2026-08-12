@@ -56,6 +56,16 @@ const Store = (() => {
   function publicUser(u) { return u ? { id: u.id, name: u.name, email: u.email, role: u.role } : null; }
   function currentUser() { return publicUser(user); }
 
+  // Entrada sin credenciales (beta): si no hay sesión, entra como demo con
+  // acceso total. No borra el login: solo evita el muro al inicio.
+  // (El login sigue disponible en login.html para cambiar de usuario/rol.)
+  function autoGuest() {
+    if (user) return publicUser(user);
+    const u = db.users.find(x => x.role === 'admin') || db.users[0];
+    if (u) { user = u; localStorage.setItem(LS_SESSION, JSON.stringify({ userId: u.id, at: Date.now(), guest: true })); }
+    return publicUser(user);
+  }
+
   // ---- proyectos / disciplinas ----
   function disciplines() { return db.disciplines.slice(); }
   function discipline(id) { return db.disciplines.find(d => d.id === id) || null; }
@@ -88,7 +98,7 @@ const Store = (() => {
   return {
     ready,
     disciplines, discipline, project, myProjects, isMember,
-    currentUser, login, logout,
+    currentUser, login, logout, autoGuest,
     getScene, saveScene, emptyScene,
     _db: () => db,
   };
