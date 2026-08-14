@@ -37,10 +37,20 @@ const SYMBOLS = {
   estufa: () => `<rect x="-12" y="-12" width="24" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="-5" cy="-5" r="2.4" fill="currentColor"/><circle cx="5" cy="-5" r="2.4" fill="currentColor"/><circle cx="-5" cy="5" r="2.4" fill="currentColor"/><circle cx="5" cy="5" r="2.4" fill="currentColor"/>`,
   calentador: () => `<circle r="12" fill="none" stroke="currentColor" stroke-width="1.6"/>${txt('CAL', 3, 7)}`,
 
+  // ---------- ARQUITECTURA (previews de paleta; la geometría se dibuja aparte) ----------
+  muro: () => `<line x1="-13" y1="7" x2="13" y2="-7" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>`,
+  suelo: () => `<rect x="-12" y="-10" width="24" height="20" rx="1" fill="rgba(154,167,184,.16)" stroke="currentColor" stroke-width="1.4"/>`,
+  cielo: () => `<rect x="-12" y="-10" width="24" height="20" rx="1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 3"/>`,
+  cubierta: () => `<path d="M-13 8 L0 -9 L13 8 Z" fill="rgba(154,167,184,.12)" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="-9" x2="0" y2="8" stroke="currentColor" stroke-width="1"/>`,
+  puerta: () => `<line x1="-8" y1="9" x2="-8" y2="-7" stroke="currentColor" stroke-width="1.8"/><path d="M-8 -7 A16 16 0 0 1 8 9" fill="none" stroke="currentColor" stroke-width="1.1"/>`,
+  ventana: () => `<rect x="-12" y="-3.5" width="24" height="7" fill="none" stroke="currentColor" stroke-width="1.4"/><line x1="0" y1="-3.5" x2="0" y2="3.5" stroke="currentColor" stroke-width="1"/>`,
+  gabinete_bajo: () => `<rect x="-12" y="-8" width="24" height="16" fill="rgba(154,167,184,.14)" stroke="currentColor" stroke-width="1.4"/><line x1="-12" y1="8" x2="12" y2="-8" stroke="currentColor" stroke-width=".8"/>`,
+  gabinete_alto: () => `<rect x="-12" y="-8" width="24" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 2"/><line x1="-12" y1="-8" x2="12" y2="8" stroke="currentColor" stroke-width=".8" stroke-dasharray="3 2"/>`,
+
   // ---------- ESTRUCTURA (obstáculos para ruteo) ----------
   columna: () => `<rect x="-20" y="-20" width="40" height="40" rx="2" fill="rgba(201,139,91,.25)" stroke="currentColor" stroke-width="1.6"/>`,
   viga: () => `<rect x="-100" y="-15" width="200" height="30" fill="rgba(201,139,91,.14)" stroke="currentColor" stroke-width="1.4" stroke-dasharray="6 4"/>`,
-  muro: () => `<rect x="-100" y="-8" width="200" height="16" fill="rgba(201,139,91,.3)" stroke="currentColor" stroke-width="1.2"/>`,
+  muro_est: () => `<rect x="-100" y="-8" width="200" height="16" fill="rgba(201,139,91,.3)" stroke="currentColor" stroke-width="1.2"/>`,
 
   // ---------- COMÚN (todas las disciplinas) ----------
   medidor: () => `<circle r="${S}" fill="none" stroke="currentColor" stroke-width="1.6"/>${txt('M', 4, 11)}`,
@@ -72,8 +82,13 @@ export const PALETTES = {
       { title: 'Común', items: ['medidor', 'bajante'] },
     ],
   },
-  arquitectura: { groups: [{ title: 'Común', items: ['medidor'] }] },
-  estructura: { groups: [{ title: 'Estructura', items: ['columna', 'viga', 'muro'] }, { title: 'Común', items: ['medidor'] }] },
+  arquitectura: { groups: [
+    { title: 'Envolvente', items: ['muro', 'suelo', 'cielo', 'cubierta'] },
+    { title: 'Vanos (sobre muro)', items: ['puerta', 'ventana'] },
+    { title: 'Mobiliario', items: ['gabinete_bajo', 'gabinete_alto'] },
+    { title: 'Común', items: ['medidor'] },
+  ] },
+  estructura: { groups: [{ title: 'Estructura', items: ['columna', 'viga', 'muro_est'] }, { title: 'Común', items: ['medidor'] }] },
   hvac: { groups: [{ title: 'Común', items: ['medidor'] }] },
 };
 
@@ -103,8 +118,21 @@ export const TYPES = {
 
   columna:     { name: 'Columna',        disc: 'estructura', obstacle: true, w: 40,  h: 40 },
   viga:        { name: 'Viga',           disc: 'estructura', obstacle: true, w: 200, h: 30 },
-  muro:        { name: 'Muro',           disc: 'estructura', obstacle: true, w: 200, h: 16 },
+  muro_est:    { name: 'Muro (est.)',    disc: 'estructura', obstacle: true, w: 200, h: 16 },
+
+  // ---- ARQUITECTURA (geometría: segmento / polígono / anclado a muro) ----
+  muro:          { name: 'Muro',          disc: 'arquitectura', geom: 'segment', thickness: 15, wall: true },
+  suelo:         { name: 'Suelo',         disc: 'arquitectura', geom: 'polygon' },
+  cielo:         { name: 'Cielo raso',    disc: 'arquitectura', geom: 'polygon', ceiling: true },
+  cubierta:      { name: 'Cubierta',      disc: 'arquitectura', geom: 'polygon', roof: true, aguas: 2, pendiente: 25 },
+  puerta:        { name: 'Puerta',        disc: 'arquitectura', geom: 'host', host: 'muro', w: 90 },
+  ventana:       { name: 'Ventana',       disc: 'arquitectura', geom: 'host', host: 'muro', w: 120 },
+  gabinete_bajo: { name: 'Gabinete bajo', disc: 'arquitectura', geom: 'segment', cabinet: 'bajo', depth: 60 },
+  gabinete_alto: { name: 'Gabinete alto', disc: 'arquitectura', geom: 'segment', cabinet: 'alto', depth: 35 },
 };
+
+// Modo de dibujo de un tipo: 'point' | 'segment' | 'polygon' | 'host'
+export function geomOf(type) { return (TYPES[type] && TYPES[type].geom) || 'point'; }
 
 export function symbolMarkup(type) {
   const fn = SYMBOLS[type];

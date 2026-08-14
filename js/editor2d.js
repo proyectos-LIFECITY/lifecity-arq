@@ -8,7 +8,7 @@
    ============================================================ */
 import Store from './store.js';
 import { canEdit } from './permissions.js';
-import { PALETTES, TYPES, symbolMarkup, typeName } from './palettes.js';
+import { PALETTES, TYPES, symbolMarkup, typeName, geomOf } from './palettes.js';
 import { makeCircuit, circuitPolyline, nextCircuitNumber } from './electrical/circuits.js';
 import { openPanelDiagram } from './electrical/panel.js';
 import { openUnifilar } from './electrical/unifilar.js';
@@ -66,6 +66,8 @@ export function mountEditor(rootEl, { slug, disc, setCrumbs }) {
     circuitPick: null,   // {kind, panelId, ids:[]}
     dragging: null,
     panning: null,
+    pending: null,       // dibujo en progreso: {type, geom, a:[x,y]} o {type, geom:'polygon', pts:[...]}
+    cursor: null,        // posición actual del cursor en mundo (para preview)
   };
 
   rootEl.innerHTML = shell(disc, editable);
@@ -140,10 +142,17 @@ function buildPalette() {
 
 function setTool(t) {
   st.tool = t;
+  st.pending = null; st.cursor = null;
   document.querySelectorAll('#epalette .ptool').forEach(el =>
     el.classList.toggle('on', el.dataset.tool === t));
-  hint(t === 'select' ? 'Clic para seleccionar. Arrastra vacío para desplazar la vista.' :
-    `Clic en el plano para colocar ${typeName(t)}. Esc para terminar.`);
+  const g = geomOf(t);
+  const msg = t === 'select' ? 'Clic para seleccionar. Arrastra vacío para desplazar la vista.'
+    : g === 'segment' ? `${typeName(t)}: clic INICIO, luego clic FINAL (2 clics).`
+    : g === 'polygon' ? `${typeName(t)}: clic en cada esquina; cierra en el inicio o con Enter.`
+    : g === 'host' ? `${typeName(t)}: clic sobre un MURO para colocarla.`
+    : `Clic en el plano para colocar ${typeName(t)}. Esc para terminar.`;
+  hint(msg);
+  if (g === 'segment' || g === 'polygon') renderSelection();
 }
 
 /* ---------------- inspector ---------------- */
@@ -298,7 +307,16 @@ function renderLinks() {
     const d = Store.discipline(linkDisc);
     const other = Store.getScene(st.slug, linkDisc);
     for (const el of other.elements) {
-      s += `<g transform="translate(${el.x},${el.y}) rotate(${el.rot || 0})" style="color:${d.color};opacity:.42" pointer-events="none">${symbolMarkup(el.type)}</g>`;
+      const t = TYPES[el.type] || {};
+      const geom = el.geom || 'point';
+      if (geom === 'segment') {
+        const th = el.props?.thickness || t.thickness || (t.cabinet ? 3 : 12);
+        s += `<line x1="${el.a[0]}" y1="${el.a[1]}" x2="${el.b[0]}" y2="${el.b[1]}" stroke="${d.color}" stroke-width="${t.wall ? th : 3}" stroke-linecap="square" opacity=".38" pointer-events="none"/>`;
+      } else if (geom === 'polygon') {
+        s += `<polygon points="${el.pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${d.color}" stroke-width="1.4" opacity=".3" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      } else {
+        s += `<g transform="translate(${el.x},${el.y}) rotate(${el.rot || 0})" style="color:${d.color};opacity:.42" pointer-events="none">${symbolMarkup(el.type)}</g>`;
+      }
     }
   }
   g.innerHTML = s;
@@ -353,25 +371,79 @@ function renderElements() {
   for (const el of st.scene.elements) {
     const t = TYPES[el.type] || {};
     const col = t.panel ? '#f4b942' : st.d.color;
-    s += `<g class="el" data-id="${el.id}" transform="translate(${el.x},${el.y}) rotate(${el.rot || 0})" style="color:${col};cursor:${st.editable ? 'move' : 'default'}">${symbolMarkup(el.type)}</g>`;
+    const geom = el.geom || 'point';
+    if (geom === 'segment') s += renderSegment(el, t, col);
+    else if (geom === 'polygon') s += renderPolygon(el, t, col);
+    else s += `<g class="el" data-id="${el.id}" transform="translate(${el.x},${el.y}) rotate(${el.rot || 0})" style="color:${col};cursor:${st.editable ? 'move' : 'default'}">${geom === 'host' ? hostSymbol(el, t) : symbolMarkup(el.type)}</g>`;
   }
   g.innerHTML = s;
   g.querySelectorAll('.el').forEach(node =>
     node.addEventListener('pointerdown', (e) => onElementDown(e, node.dataset.id)));
 }
 
+function renderSegment(el, t, col) {
+  const a = el.a, b = el.b;
+  if (t.cabinet) {
+    const dep = el.props.depth || t.depth || 50;
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L * dep, ny = dx / L * dep;
+    const pts = `${a[0]},${a[1]} ${b[0]},${b[1]} ${b[0] + nx},${b[1] + ny} ${a[0] + nx},${a[1] + ny}`;
+    const fill = t.cabinet === 'alto' ? 'none' : 'rgba(154,167,184,.14)';
+    const dash = t.cabinet === 'alto' ? 'stroke-dasharray="7 4"' : '';
+    return `<polygon class="el" data-id="${el.id}" points="${pts}" fill="${fill}" stroke="${col}" stroke-width="1.5" ${dash} vector-effect="non-scaling-stroke" style="cursor:${st.editable ? 'pointer' : 'default'}"/>`;
+  }
+  const th = el.props.thickness || t.thickness || 15;
+  return `<line class="el" data-id="${el.id}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${col}" stroke-width="${th}" stroke-linecap="square" style="cursor:${st.editable ? 'pointer' : 'default'}"/>`;
+}
+
+function renderPolygon(el, t, col) {
+  const pts = el.pts.map(p => p.join(',')).join(' ');
+  const fill = t.roof ? 'rgba(154,167,184,.08)' : (t.ceiling ? 'none' : 'rgba(154,167,184,.10)');
+  const dash = t.ceiling ? 'stroke-dasharray="9 5"' : '';
+  const c = centroid(el.pts);
+  let s = `<polygon class="el" data-id="${el.id}" points="${pts}" fill="${fill}" stroke="${col}" stroke-width="1.6" ${dash} vector-effect="non-scaling-stroke" style="cursor:${st.editable ? 'pointer' : 'default'}"/>`;
+  if (t.roof) {
+    for (const v of el.pts) s += `<line x1="${c[0]}" y1="${c[1]}" x2="${v[0]}" y2="${v[1]}" stroke="${col}" stroke-width=".8" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" opacity=".55" pointer-events="none"/>`;
+    s += `<text x="${c[0]}" y="${c[1]}" text-anchor="middle" font-size="12" font-family="JetBrains Mono" fill="${col}" pointer-events="none">Cubierta · ${el.props.aguas || 2} aguas · ${el.props.pendiente || 25}%</text>`;
+  } else {
+    s += `<text x="${c[0]}" y="${c[1]}" text-anchor="middle" font-size="11" font-family="JetBrains Mono" fill="${col}" opacity=".7" pointer-events="none">${typeName(el.type)}</text>`;
+  }
+  return s;
+}
+
+function hostSymbol(el, t) {
+  const w = el.props.w || t.w || 90;
+  if (el.type === 'ventana') {
+    return `<rect x="${-w / 2}" y="-6" width="${w}" height="12" fill="#0b0f16" stroke="currentColor" stroke-width="1.4"/><line x1="${-w / 2}" y1="0" x2="${w / 2}" y2="0" stroke="currentColor" stroke-width="1"/>`;
+  }
+  return `<rect x="${-w / 2}" y="-5" width="${w}" height="10" fill="#0b0f16" stroke="none"/><line x1="${-w / 2}" y1="0" x2="${-w / 2}" y2="${-w}" stroke="currentColor" stroke-width="1.8"/><path d="M${-w / 2} ${-w} A ${w} ${w} 0 0 1 ${w / 2} 0" fill="none" stroke="currentColor" stroke-width="1.1"/>`;
+}
+
 function renderSelection() {
   const g = document.getElementById('layer-overlay');
   let s = '';
+  const HL = 'stroke="#4dd0e1" stroke-width="1.8" stroke-dasharray="4 3" fill="none" vector-effect="non-scaling-stroke" pointer-events="none"';
   for (const id of st.sel) {
     const el = st.scene.elements.find(e => e.id === id);
     if (!el) continue;
-    s += `<circle cx="${el.x}" cy="${el.y}" r="17" fill="none" stroke="#4dd0e1" stroke-width="1.6" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`;
+    if ((el.geom || 'point') === 'segment') {
+      s += `<line x1="${el.a[0]}" y1="${el.a[1]}" x2="${el.b[0]}" y2="${el.b[1]}" ${HL}/>`;
+    } else if (el.geom === 'polygon') {
+      s += `<polygon points="${el.pts.map(p => p.join(',')).join(' ')}" ${HL}/>`;
+    } else {
+      s += `<circle cx="${el.x}" cy="${el.y}" r="17" ${HL}/>`;
+    }
   }
-  // resaltar tablero elegido para circuito
-  if (st.circuitPick && st.circuitPick.panelId) {
-    const p = st.scene.elements.find(e => e.id === st.circuitPick.panelId);
-    if (p) s += `<rect x="${p.x - 17}" y="${p.y - 15}" width="34" height="30" fill="none" stroke="#6bd96b" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+  // preview del dibujo en progreso
+  if (st.pending && st.cursor) {
+    const col = st.d.color;
+    if (st.pending.geom === 'segment') {
+      s += `<line x1="${st.pending.a[0]}" y1="${st.pending.a[1]}" x2="${st.cursor[0]}" y2="${st.cursor[1]}" stroke="${col}" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+    } else if (st.pending.geom === 'polygon') {
+      const all = [...st.pending.pts, st.cursor];
+      s += `<polyline points="${all.map(p => p.join(',')).join(' ')}" fill="rgba(255,255,255,.04)" stroke="${col}" stroke-width="1.6" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      for (const v of st.pending.pts) s += `<circle cx="${v[0]}" cy="${v[1]}" r="4" fill="${col}" pointer-events="none"/>`;
+    }
   }
   g.innerHTML = s;
   updateSelInspector();
@@ -415,17 +487,33 @@ function onWheel(e) {
 function onCanvasDown(e) {
   if (e.target.closest('.el')) return; // manejado por onElementDown
   const w = toWorld(e);
-  // colocar aparato
   if (st.editable && st.tool !== 'select' && e.button === 0) {
-    placeElement(st.tool, snap(w.x), snap(w.y));
-    return;
+    const g = geomOf(st.tool);
+    const p = [snap(w.x), snap(w.y)];
+    if (g === 'point') { placeElement(st.tool, p[0], p[1]); return; }
+    if (g === 'host') { createHost(st.tool, p); return; }
+    if (g === 'segment') {
+      if (!st.pending) { st.pending = { type: st.tool, geom: g, a: p }; hint('Clic en el punto FINAL. Esc cancela.'); }
+      else { createSegment(st.tool, st.pending.a, p); st.pending = null; hint(`${typeName(st.tool)} creado. Clic para el siguiente (Esc para terminar).`); }
+      render(); return;
+    }
+    if (g === 'polygon') {
+      if (!st.pending) { st.pending = { type: st.tool, geom: g, pts: [p] }; }
+      else {
+        const f = st.pending.pts[0];
+        if (st.pending.pts.length >= 3 && Math.hypot(p[0] - f[0], p[1] - f[1]) < 40) { finishPolygon(); return; }
+        st.pending.pts.push(p);
+      }
+      hint('Clic para más puntos · clic en el INICIO o Enter para cerrar · Esc cancela.');
+      render(); return;
+    }
   }
-  // pan (izq sobre vacío o botón derecho/medio)
   st.panning = { sx: e.clientX, sy: e.clientY, vx: st.view.x, vy: st.view.y };
   if (!e.shiftKey) { st.sel.clear(); renderSelection(); }
 }
 
 function onCanvasMove(e) {
+  if (st.pending) { const w = toWorld(e); st.cursor = [snap(w.x), snap(w.y)]; renderSelection(); return; }
   if (st.panning) {
     const svg = document.getElementById('ecanvas');
     const scale = st.view.w / svg.clientWidth;
@@ -451,14 +539,15 @@ function onElementDown(e, id) {
   if (!e.shiftKey) st.sel.clear();
   st.sel.add(id);
   renderSelection();
-  if (st.editable && e.button === 0) {
+  if (st.editable && e.button === 0 && el.x != null) {   // arrastre solo puntos/anclados
     const w = toWorld(e);
     st.dragging = { id, dx: w.x - el.x, dy: w.y - el.y };
   }
 }
 
 function onKey(e) {
-  if (e.key === 'Escape') { setTool('select'); st.circuitPick = null; renderSelection(); }
+  if (e.key === 'Escape') { st.pending = null; st.cursor = null; setTool('select'); st.circuitPick = null; render(); }
+  if (e.key === 'Enter' && st.pending && st.pending.geom === 'polygon') { finishPolygon(); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && st.editable && st.sel.size) {
     st.scene.elements = st.scene.elements.filter(el => !st.sel.has(el.id));
     st.scene.circuits = st.scene.circuits.filter(c =>
@@ -477,8 +566,67 @@ function placeElement(type, x, y) {
   const el = { id: 'e' + (idc++), type, disc: st.disc, x, y, rot: 0, props: {} };
   const t = TYPES[type] || {};
   if (t.va != null) el.props.va = t.va;
+  // MEP: tomas se anclan al muro más cercano; luminarias van "en cielo"
+  if (t.circuitable === 'tomas') {
+    const walls = collectWalls();
+    if (walls.length) { const h = nearestWall([x, y], walls); if (h && h.dist < 150) { el.x = h.foot[0]; el.y = h.foot[1]; el.rot = h.angle; el.props.host = 'muro'; } }
+  }
+  if (t.circuitable === 'iluminacion') el.props.host = 'cielo';
   st.scene.elements.push(el);
   persist(); render();
+}
+
+/* ------ geometría arquitectónica ------ */
+function createSegment(type, a, b) {
+  if (a[0] === b[0] && a[1] === b[1]) return;
+  const t = TYPES[type] || {};
+  const el = { id: 'e' + (idc++), type, disc: st.disc, geom: 'segment', a, b, props: {} };
+  if (t.thickness) el.props.thickness = t.thickness;
+  if (t.depth) el.props.depth = t.depth;
+  st.scene.elements.push(el); persist();
+}
+
+function finishPolygon() {
+  const p = st.pending;
+  if (!p || p.pts.length < 3) { st.pending = null; st.cursor = null; render(); return; }
+  const t = TYPES[p.type] || {};
+  const el = { id: 'e' + (idc++), type: p.type, disc: st.disc, geom: 'polygon', pts: p.pts.slice(), props: {} };
+  if (t.roof) { el.props.aguas = t.aguas; el.props.pendiente = t.pendiente; }
+  st.scene.elements.push(el);
+  st.pending = null; st.cursor = null; persist(); render();
+  toast(`${typeName(p.type)} creado.`);
+}
+
+function createHost(type, p) {
+  const t = TYPES[type] || {};
+  const walls = collectWalls();
+  if (!walls.length) return toast('Coloca un muro primero (o activa el vínculo Arquitectura).');
+  const h = nearestWall(p, walls);
+  if (!h || h.dist > 140) return toast('Acerca el clic a un muro.');
+  const el = { id: 'e' + (idc++), type, disc: st.disc, geom: 'host', hostId: h.wall.id, x: h.foot[0], y: h.foot[1], rot: h.angle, props: { w: t.w } };
+  st.scene.elements.push(el); persist(); render();
+}
+
+// muros de esta escena + (si es MEP) los del vínculo Arquitectura
+function collectWalls() {
+  const here = st.scene.elements.filter(e => e.geom === 'segment' && (TYPES[e.type] || {}).wall);
+  if (st.disc === 'arquitectura') return here;
+  const a = Store.getScene(st.slug, 'arquitectura');
+  return here.concat(a.elements.filter(e => e.geom === 'segment' && (TYPES[e.type] || {}).wall));
+}
+function projectPointSeg(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+  let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2; t = Math.max(0, Math.min(1, t));
+  const fx = a[0] + t * dx, fy = a[1] + t * dy;
+  return { foot: [fx, fy], dist: Math.hypot(p[0] - fx, p[1] - fy), t, angle: Math.atan2(dy, dx) * 180 / Math.PI };
+}
+function nearestWall(p, walls) {
+  let best = null;
+  for (const w of walls) { const r = projectPointSeg(p, w.a, w.b); if (!best || r.dist < best.dist) best = { ...r, wall: w }; }
+  return best;
+}
+function centroid(pts) {
+  let x = 0, y = 0; for (const p of pts) { x += p[0]; y += p[1]; } return [x / pts.length, y / pts.length];
 }
 
 function toggleLink(disc, on) {
@@ -596,13 +744,29 @@ function updateSelInspector() {
   const el = st.scene.elements.find(e => st.sel.has(e.id));
   if (!el) return;
   const t = TYPES[el.type] || {};
-  box.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px">${typeName(el.type)}</div>
-    <div class="f"><label>Posición (cm)</label><input value="x ${el.x}  ·  y ${el.y}" disabled></div>
-    ${t.va != null ? `<div class="f"><label>Carga (VA)</label><input type="number" id="p-va" value="${el.props.va ?? t.va}" ${st.editable ? '' : 'disabled'}></div>` : ''}
-    <div class="f"><label>Rotación</label><input value="${el.rot || 0}°" disabled></div>
-    ${st.editable ? `<div style="font-size:10px;color:var(--text-faint)">R = rotar · Supr = borrar</div>` : ''}`;
-  const va = document.getElementById('p-va');
-  if (va) va.addEventListener('change', () => { el.props.va = +va.value; persist(); });
+  const ed = st.editable ? '' : 'disabled';
+  let fields = '';
+  const geom = el.geom || 'point';
+  if (geom === 'segment') {
+    const L = Math.round(Math.hypot(el.b[0] - el.a[0], el.b[1] - el.a[1]));
+    fields = `<div class="f"><label>Longitud</label><input value="${L} cm  (${(L / 100).toFixed(2)} m)" disabled></div>`;
+    if (t.wall) fields += `<div class="f"><label>Espesor muro (cm)</label><input type="number" id="p-th" value="${el.props.thickness || t.thickness}" ${ed}></div>`;
+    if (t.cabinet) fields += `<div class="f"><label>Fondo gabinete (cm)</label><input type="number" id="p-dep" value="${el.props.depth || t.depth}" ${ed}></div>`;
+  } else if (geom === 'polygon') {
+    fields = `<div class="f"><label>Vértices</label><input value="${el.pts.length}" disabled></div>`;
+    if (t.roof) fields += `<div class="f"><label>Nº de aguas</label><input type="number" id="p-ag" value="${el.props.aguas ?? 2}" ${ed}></div>
+      <div class="f"><label>Pendiente (%)</label><input type="number" id="p-pe" value="${el.props.pendiente ?? 25}" ${ed}></div>`;
+  } else {
+    fields = `<div class="f"><label>Posición (cm)</label><input value="x ${el.x} · y ${el.y}" disabled></div>
+      ${el.props.host ? `<div class="f"><label>Anclado a</label><input value="${el.props.host}" disabled></div>` : ''}
+      ${t.va != null ? `<div class="f"><label>Carga (VA)</label><input type="number" id="p-va" value="${el.props.va ?? t.va}" ${ed}></div>` : ''}
+      ${geom === 'host' ? `<div class="f"><label>Ancho (cm)</label><input type="number" id="p-w" value="${el.props.w || t.w}" ${ed}></div>` : ''}
+      <div class="f"><label>Rotación</label><input value="${Math.round(el.rot || 0)}°" disabled></div>`;
+  }
+  box.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px">${typeName(el.type)}</div>${fields}
+    ${st.editable ? `<div style="font-size:10px;color:var(--text-faint)">${el.x != null ? 'R = rotar · ' : ''}Supr = borrar</div>` : ''}`;
+  const bind = (id, key) => { const n = document.getElementById(id); if (n) n.addEventListener('change', () => { el.props[key] = +n.value; persist(); render(); }); };
+  bind('p-va', 'va'); bind('p-th', 'thickness'); bind('p-dep', 'depth'); bind('p-ag', 'aguas'); bind('p-pe', 'pendiente'); bind('p-w', 'w');
 }
 
 /* ------ RETIE panel ------ */
@@ -622,8 +786,14 @@ function fitView() {
   const u = st.scene.underlay;
   if (!els.length && !u) { st.view = { x: -200, y: -200, w: 1400, h: 1400 / aspect }; render(); return; }
   let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-  for (const e of els) { minx = Math.min(minx, e.x); miny = Math.min(miny, e.y); maxx = Math.max(maxx, e.x); maxy = Math.max(maxy, e.y); }
-  if (u) { minx = Math.min(minx, u.x); miny = Math.min(miny, u.y); maxx = Math.max(maxx, u.x + u.w); maxy = Math.max(maxy, u.y + u.h); }
+  const acc = (x, y) => { minx = Math.min(minx, x); miny = Math.min(miny, y); maxx = Math.max(maxx, x); maxy = Math.max(maxy, y); };
+  for (const e of els) {
+    if (e.geom === 'segment') { acc(e.a[0], e.a[1]); acc(e.b[0], e.b[1]); }
+    else if (e.geom === 'polygon') { for (const p of e.pts) acc(p[0], p[1]); }
+    else acc(e.x, e.y);
+  }
+  if (u) { acc(u.x, u.y); acc(u.x + u.w, u.y + u.h); }
+  if (!isFinite(minx)) { st.view = { x: -200, y: -200, w: 1400, h: 1400 / aspect }; render(); return; }
   const pad = 150;
   let w = (maxx - minx) + pad * 2, h = (maxy - miny) + pad * 2;
   if (w / h < aspect) w = h * aspect; else h = w / aspect;
