@@ -18,6 +18,7 @@ import { diaColor } from './hydro/diameters.js';
 import { reviewHydro } from './hydro/review.js';
 import { GAS_FLOW } from './gas/diameters.js';
 import { reviewGas } from './gas/review.js';
+import { open3D } from './viewer3d.js';
 import { modal, toast } from './ui.js';
 
 /* Config de ruteo por disciplina (hidro y gas comparten motor) */
@@ -101,6 +102,8 @@ function shell(disc, editable) {
       <div class="etoolbar">
         <button class="btn sm" data-act="fit">Encuadrar</button>
         <button class="btn sm" data-act="grid">Grid</button>
+        <button class="btn sm" data-act="ver3d">🧊 3D</button>
+        <button class="btn sm" data-act="nube">☁ Nube</button>
         ${isElec ? `<button class="btn sm" data-act="panel">⚡ Cuadro de cargas</button>
         <button class="btn sm" data-act="unifilar">Unifilar</button>
         <button class="btn sm" data-act="retie">RETIE 2026</button>` : ''}
@@ -236,7 +239,75 @@ function onToolbar(e) {
   if (act === 'unifilar') openUnifilar(st.scene, st.proj);
   if (act === 'retie') showRetie();
   if (act === 'routenorm') showRouteNorm();
+  if (act === 'ver3d') open3D(st.slug, st.proj);
+  if (act === 'nube') showCloud();
   if (act === 'plano') { const pf = document.getElementById('plano-file'); if (pf) pf.click(); }
+}
+
+/* ------ importar/exportar en la nube (arq de este repo o MEP de otro) ------ */
+function showCloud() {
+  const discs = Store.disciplines();
+  const opts = discs.map(d => `<option value="${d.id}" ${d.id === st.disc ? 'selected' : ''}>${d.name}</option>`).join('');
+  const m = modal('☁ Nube · Importar / Exportar', `
+    <div class="sub" style="margin-bottom:14px">Comparte escenas entre proyectos o repos: exporta un JSON y súbelo (GitHub, Drive…), o pega un enlace <b>raw</b> para importar. Sirve para traer <b>arquitectura de este repo</b> o <b>MEP del repo de barona.architect</b>.</div>
+    <h3 style="font-family:var(--display);margin:0 0 8px">Exportar</h3>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Descarga la escena de <b>${st.d.name}</b> de este proyecto.</div>
+    <button class="btn sm primary" id="cl-export">⬇ Exportar ${st.d.name} (.json)</button>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h3 style="font-family:var(--display);margin:0 0 8px">Importar</h3>
+    <div class="f"><label>Importar en la disciplina</label><select id="cl-disc">${opts}</select></div>
+    <div class="f"><label>Desde enlace (raw URL de GitHub/Drive)</label>
+      <input id="cl-url" placeholder="https://raw.githubusercontent.com/baronaarchitect-collab/.../electrico.json"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <button class="btn sm" id="cl-url-go">Importar desde enlace</button>
+      <button class="btn sm" id="cl-file-go">Importar desde archivo…</button>
+      <input type="file" id="cl-file" accept="application/json,.json" style="display:none">
+    </div>
+    <div id="cl-msg" style="font-size:11px;color:var(--text-dim);margin-top:8px"></div>`, { wide: true });
+
+  const msg = m.el.querySelector('#cl-msg');
+  m.el.querySelector('#cl-export').addEventListener('click', () => exportScene());
+  m.el.querySelector('#cl-file').addEventListener('change', (e) => importFromFile(e, msg, m));
+  m.el.querySelector('#cl-file-go').addEventListener('click', () => m.el.querySelector('#cl-file').click());
+  m.el.querySelector('#cl-url-go').addEventListener('click', () => importFromUrl(m.el.querySelector('#cl-url').value.trim(), m.el.querySelector('#cl-disc').value, msg, m));
+}
+
+function exportScene() {
+  const data = JSON.stringify({ _lifecity: 'scene', slug: st.slug, disc: st.disc, scene: st.scene }, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${st.slug}-${st.disc}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('Escena exportada.');
+}
+
+function loadImported(json, targetDisc, msg, m) {
+  const scene = json && json.scene ? json.scene : json;
+  if (!scene || !Array.isArray(scene.elements)) { if (msg) msg.textContent = '⚠ El archivo no tiene una escena válida ({elements:[…]}).'; return; }
+  const norm = Store.emptyScene();
+  Object.assign(norm, scene);
+  Store.saveScene(st.slug, targetDisc, norm);
+  toast(`Importado en ${Store.discipline(targetDisc)?.name || targetDisc} (${scene.elements.length} elementos).`);
+  if (m) m.close();
+  if (targetDisc === st.disc) { st.scene = Store.getScene(st.slug, st.disc); render(); buildInspector(); fitView(); }
+}
+
+function importFromFile(e, msg, m) {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { loadImported(JSON.parse(rd.result), document.getElementById('cl-disc').value, msg, m); } catch (err) { msg.textContent = '⚠ JSON inválido: ' + err.message; } };
+  rd.readAsText(f); e.target.value = '';
+}
+
+async function importFromUrl(url, disc, msg, m) {
+  if (!url) { msg.textContent = 'Pega un enlace raw primero.'; return; }
+  msg.textContent = 'Descargando…';
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    loadImported(await r.json(), disc, msg, m);
+  } catch (err) { msg.textContent = '⚠ No se pudo importar: ' + err.message + ' (¿es un enlace raw y permite CORS?)'; }
 }
 
 /* ------ plano de fondo (underlay) ------ */
